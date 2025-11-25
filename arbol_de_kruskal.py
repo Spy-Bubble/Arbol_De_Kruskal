@@ -1,4 +1,7 @@
-class KruskalConsole:
+import networkx as nx
+import matplotlib.pyplot as plt
+
+class KruskalSimulator:
     def __init__(self, vertices):
         self.V = vertices
         self.edges = [] # Lista de aristas: [peso, u, v]
@@ -8,7 +11,6 @@ class KruskalConsole:
         self.rank = [0] * vertices
 
     def add_edge(self, u, v, w):
-        """Agrega una arista al grafo: u=origen, v=destino, w=peso"""
         self.edges.append([w, u, v])
 
     # --- FUNCIONES DE UNION-FIND ---
@@ -19,12 +21,11 @@ class KruskalConsole:
         return self.parent[i]
 
     def union(self, i, j):
-        """Une dos subconjuntos. Retorna True si la unión fue exitosa (no había ciclo)"""
+        """Une dos subconjuntos (árboles) basándose en el rango"""
         root_i = self.find(i)
         root_j = self.find(j)
 
         if root_i != root_j:
-            # Unir por rango (el árbol más pequeño se une al más grande)
             if self.rank[root_i] < self.rank[root_j]:
                 self.parent[root_i] = root_j
             elif self.rank[root_i] > self.rank[root_j]:
@@ -32,81 +33,96 @@ class KruskalConsole:
             else:
                 self.parent[root_j] = root_i
                 self.rank[root_i] += 1
-            return True # Se unieron correctamente
+            return True # Unión exitosa (no había ciclo)
         return False # Ya estaban conectados (formaría ciclo)
+
+    # --- VISUALIZACIÓN ---
+    def show_results(self, result_edges, mode):
+        G = nx.Graph()
+        G.add_nodes_from(range(self.V))
+        
+        # Agregamos TODAS las aristas para el fondo
+        for w, u, v in self.edges:
+            G.add_edge(u, v, weight=w)
+
+        pos = nx.spring_layout(G, seed=42)
+        plt.figure(figsize=(10, 7))
+
+        # Dibujar todo el grafo en gris
+        nx.draw_networkx_nodes(G, pos, node_size=700, node_color='lightgreen', edgecolors='black')
+        nx.draw_networkx_labels(G, pos, font_size=12, font_weight='bold')
+        nx.draw_networkx_edges(G, pos, style='dashed', alpha=0.3, edge_color='gray')
+        
+        # Dibujar aristas del resultado en Azul (Max) o Rojo (Min)
+        mst_style_edges = [(u, v) for w, u, v in result_edges]
+        color = 'blue' if mode == 'max' else 'red'
+        nx.draw_networkx_edges(G, pos, edgelist=mst_style_edges, width=3, edge_color=color)
+        
+        # Etiquetas de peso
+        labels = nx.get_edge_attributes(G, 'weight')
+        nx.draw_networkx_edge_labels(G, pos, edge_labels=labels)
+
+        title_mode = "MÁXIMO Coste" if mode == 'max' else "MÍNIMO Coste"
+        plt.title(f"Resultado Kruskal: Árbol de {title_mode}", fontsize=15)
+        plt.axis('off')
+        plt.show()
 
     # --- ALGORITMO PRINCIPAL ---
     def ejecutar_kruskal(self, mode='min'):
-        # Reiniciar estructuras para permitir múltiples ejecuciones
+        # Reiniciar Union-Find para cada ejecución
         self.parent = list(range(self.V))
         self.rank = [0] * self.V
         
-        result = [] # Aquí guardaremos el MST final
-        e = 0 # Contador de aristas aceptadas
-        
+        result = []
+        i = 0 # Índice para aristas ordenadas
+        e = 0 # Contador de aristas en el árbol
+
         # 1. ORDENAR ARISTAS
-        # Si mode es 'max', ordenamos de mayor a menor (reverse=True)
+        # Si es min: ascendente. Si es max: descendente (reverse=True)
         is_reverse = True if mode == 'max' else False
         self.edges = sorted(self.edges, key=lambda item: item[0], reverse=is_reverse)
 
-        print(f"\n" + "="*50)
-        print(f"INICIO KRUSKAL - Modo: {mode.upper()}")
-        print("="*50)
-        print(f"1. Ordenando aristas ({'Descendente' if is_reverse else 'Ascendente'})...")
-        print(f"   Lista ordenada: {[(w, u, v) for w, u, v in self.edges]}")
-        print("-" * 50)
+        print(f"\n--- INICIO KRUSKAL (Modo: {mode.upper()}) ---")
+        print(f"Aristas ordenadas por peso: {[(w, u, v) for w, u, v in self.edges]}")
 
-        # 2. ITERAR ARISTAS
+        # Iterar sobre las aristas ordenadas
         for w, u, v in self.edges:
-            # Condición de parada: Si ya tenemos V-1 aristas, el árbol está completo
-            if e >= self.V - 1:
+            if e >= self.V - 1: # Ya tenemos V-1 aristas, terminamos
                 break
                 
-            print(f"-> Analizando arista {u} -- {v} (Peso: {w})")
+            print(f"-> Analizando arista {u}-{v} con peso {w}...")
             
-            root_u = self.find(u)
-            root_v = self.find(v)
-            
-            # Verificamos si forman ciclo
+            # 2. VERIFICAR CICLOS (FIND & UNION)
             if self.union(u, v):
-                print(f"   [OK] Raíces distintas ({root_u} y {root_v}). No forma ciclo.")
-                print(f"   >>> AGREGADA al árbol.")
+                print(f"   [ACEPTADA] No forma ciclo. Se agrega al árbol.")
                 result.append([w, u, v])
                 e += 1
             else:
-                print(f"   [X]  Raíces iguales ({root_u}). Ya están conectados.")
-                print(f"   >>> RECHAZADA (Formaría ciclo).")
-            print("." * 30)
+                print(f"   [RECHAZADA] Los nodos {u} y {v} ya están conectados. Formaría un ciclo.")
 
-        # 3. MOSTRAR RESULTADOS
-        print("\n" + "="*50)
-        print(f"RESULTADO FINAL: Árbol de {mode.upper()} Coste")
-        print("="*50)
-        print(f"{'Origen':<10} {'Destino':<10} {'Peso':<10}")
-        print("-" * 30)
-        
+        # Mostrar resultados
+        print("\n" + "="*40)
+        print(f"RESULTADO FINAL ({mode.upper()})")
+        print("="*40)
         total_cost = 0
         for w, u, v in result:
-            print(f"{u:<10} {v:<10} {w:<10}")
+            print(f"{u} -- {v} == {w}")
             total_cost += w
-            
-        print("-" * 30)
         print(f"Costo Total: {total_cost}")
-        print("="*50 + "\n")
+        
+        self.show_results(result, mode)
 
-# --- BLOQUE DE EJECUCIÓN ---
-if __name__ == '__main__':
-    sim = KruskalConsole(4)
-    
-    # Agregamos las aristas (u, v, peso)
+# --- EJECUCIÓN ---
+if __name__ == '__main__': 
+    sim = KruskalSimulator(4)
     sim.add_edge(0, 1, 10)
     sim.add_edge(0, 2, 6)
     sim.add_edge(0, 3, 5)
     sim.add_edge(1, 3, 15)
     sim.add_edge(2, 3, 4)
 
-    # Ejecutar para Mínimo Coste
-    sim.ejecutar_kruskal(mode='min')
+    # EJECUTAR PARA MÍNIMO
+    #sim.ejecutar_kruskal(mode='min')
     
-    # Ejecutar para Máximo Coste
+    # EJECUTAR PARA MÁXIMO 
     sim.ejecutar_kruskal(mode='max')
